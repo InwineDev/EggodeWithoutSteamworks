@@ -1,13 +1,11 @@
 using Mirror;
 using System.Collections;
+using System.IO;
+using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
-using Steamworks;
-using UnityEngine.SceneManagement;
-using System.Linq;
-
 
 public class mapdannie : MonoBehaviour
 {
@@ -22,12 +20,13 @@ public class mapdannie : MonoBehaviour
     public Image backgroundMema;
     public GameObject hostButton;
     public GameObject ErrorText;
+
     [SerializeField] private Color averageColor;
 
     public void Starting()
     {
-
     }
+
     public void ButtonGame()
     {
         login.urlMap = jsonFilePath;
@@ -36,28 +35,54 @@ public class mapdannie : MonoBehaviour
 
     public IEnumerator Pon(string textureUrl)
     {
+        if (string.IsNullOrWhiteSpace(textureUrl))
+            yield break;
+
         using (UnityWebRequest www = UnityWebRequestTexture.GetTexture(textureUrl))
         {
             yield return www.SendWebRequest();
 
-            if (www.result == UnityWebRequest.Result.ConnectionError || www.result == UnityWebRequest.Result.ProtocolError)
+            if (www.result == UnityWebRequest.Result.ConnectionError ||
+                www.result == UnityWebRequest.Result.ProtocolError)
             {
-                Debug.Log("Error loading image: " + www.error);
+                Debug.LogWarning("Error loading image: " + www.error);
             }
             else
             {
                 Texture2D texture = DownloadHandlerTexture.GetContent(www);
-                sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
-                icon.sprite = sprite;
-                background.sprite = sprite;
-                averageColor = GetAverageColor(sprite.texture);
-                backgroundMema.color = averageColor;
+
+                if (texture != null)
+                {
+                    sprite = Sprite.Create(
+                        texture,
+                        new Rect(0, 0, texture.width, texture.height),
+                        new Vector2(0.5f, 0.5f)
+                    );
+
+                    if (icon != null)
+                        icon.sprite = sprite;
+
+                    if (background != null)
+                        background.sprite = sprite;
+
+                    averageColor = GetAverageColor(sprite.texture);
+
+                    if (backgroundMema != null)
+                        backgroundMema.color = averageColor;
+                }
             }
         }
     }
-    Color GetAverageColor(Texture2D texture)
+
+    private Color GetAverageColor(Texture2D texture)
     {
+        if (texture == null)
+            return Color.white;
+
         Color32[] pixels = texture.GetPixels32();
+        if (pixels == null || pixels.Length == 0)
+            return Color.white;
+
         long totalR = 0;
         long totalG = 0;
         long totalB = 0;
@@ -71,27 +96,80 @@ public class mapdannie : MonoBehaviour
             totalA += pixels[i].a;
         }
 
-        float averageR = (float)totalR / pixels.Length / 255.0f;
-        float averageG = (float)totalG / pixels.Length / 255.0f;
-        float averageB = (float)totalB / pixels.Length / 255.0f;
-        float averageA = (float)totalA / pixels.Length / 255.0f;
+        float averageR = (float)totalR / pixels.Length / 255f;
+        float averageG = (float)totalG / pixels.Length / 255f;
+        float averageB = (float)totalB / pixels.Length / 255f;
+        float averageA = (float)totalA / pixels.Length / 255f;
 
         return new Color(averageR, averageG, averageB, averageA);
     }
+
     private void OnEnable()
     {
-        if (!SteamManager.Initialized) { return; }
         omg = FindObjectOfType<NetworkManager>();
-        hostButton.SetActive(false);
-        string jsonText = System.IO.File.ReadAllText(jsonFilePath);
-        MapData mapData1 = JsonUtility.FromJson<MapData>(jsonText);
-        nameText.text = mapData1.mapname;
-        authorText.text = "Àâòîð: " + mapData1.author;
-        if (mapData1.modsDependence.All(mod => CsModsManager.modsForServer.Contains(mod)))
-        {
-            hostButton.SetActive(true);
+
+        if (hostButton != null)
+            hostButton.SetActive(false);
+
+        if (ErrorText != null)
             ErrorText.SetActive(false);
+
+        if (string.IsNullOrWhiteSpace(jsonFilePath))
+        {
+            Debug.LogWarning("jsonFilePath is empty.");
+            return;
         }
+
+        if (!File.Exists(jsonFilePath))
+        {
+            Debug.LogWarning("Map file not found: " + jsonFilePath);
+            return;
+        }
+
+        string jsonText = File.ReadAllText(jsonFilePath);
+        if (string.IsNullOrWhiteSpace(jsonText))
+        {
+            Debug.LogWarning("Map file is empty: " + jsonFilePath);
+            return;
+        }
+
+        MapData mapData1 = JsonUtility.FromJson<MapData>(jsonText);
+        if (mapData1 == null)
+        {
+            Debug.LogWarning("Failed to parse map json: " + jsonFilePath);
+            return;
+        }
+
+        if (nameText != null)
+            nameText.text = mapData1.mapname;
+
+        if (authorText != null)
+            authorText.text = "ÐÐ²Ñ‚Ð¾Ñ€: " + mapData1.author;
+
+        bool modsOk = true;
+
+        if (mapData1.modsDependence != null)
+        {
+            modsOk = mapData1.modsDependence.All(mod => CsModsManager.modsForServer.Contains(mod));
+        }
+
+        if (modsOk)
+        {
+            if (hostButton != null)
+                hostButton.SetActive(true);
+
+            if (ErrorText != null)
+                ErrorText.SetActive(false);
+        }
+        else
+        {
+            if (hostButton != null)
+                hostButton.SetActive(false);
+
+            if (ErrorText != null)
+                ErrorText.SetActive(true);
+        }
+
         StartCoroutine(Pon(mapData1.icon));
     }
 }

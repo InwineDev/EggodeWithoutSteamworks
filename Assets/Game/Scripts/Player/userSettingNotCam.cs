@@ -4,8 +4,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
 using System;
-using Steamworks;
-using Mirror.FizzySteam;
 
 public class userSettingNotCam : NetworkBehaviour
 {
